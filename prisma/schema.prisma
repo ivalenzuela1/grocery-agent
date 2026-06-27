@@ -1,0 +1,102 @@
+// Grocery Planner — data model (Postgres / Neon)
+// Single-household app: Preference is a singleton row.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// Singleton: likes / dislikes / allergies injected into the AI planning prompt.
+model Preference {
+  id                 String   @id @default(cuid())
+  likes              String[] @default([])
+  dislikes           String[] @default([])
+  allergies          String[] @default([])
+  householdSize      Int      @default(2)
+  defaultBudgetCents Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+// Recurring items that surface themselves when due (now - lastOrderedAt >= cadenceDays).
+model Staple {
+  id              String    @id @default(cuid())
+  name            String
+  category        String // grocery aisle
+  defaultQuantity Float     @default(1)
+  unit            String    @default("each")
+  cadenceDays     Int       @default(7)
+  lastOrderedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Recipe {
+  id           String           @id @default(cuid())
+  title        String
+  servings     Int              @default(2)
+  source       String           @default("ai") // "ai" | "manual"
+  instructions String           @default("")
+  ingredients  Ingredient[]
+  mealPlans    MealPlanRecipe[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Ingredient {
+  id       String @id @default(cuid())
+  recipeId String
+  recipe   Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  name     String
+  quantity Float  @default(1)
+  unit     String @default("each")
+  category String @default("Other")
+}
+
+model MealPlan {
+  id              String           @id @default(cuid())
+  weekOf          DateTime
+  constraintsJson Json
+  status          String           @default("draft") // "draft" | "planned" | "ordered"
+  recipes         MealPlanRecipe[]
+  shoppingLists   ShoppingList[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model MealPlanRecipe {
+  id         String   @id @default(cuid())
+  mealPlanId String
+  mealPlan   MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  recipeId   String
+  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([mealPlanId, recipeId])
+}
+
+model ShoppingList {
+  id         String             @id @default(cuid())
+  mealPlanId String?
+  mealPlan   MealPlan?          @relation(fields: [mealPlanId], references: [id], onDelete: SetNull)
+  status     String             @default("draft") // "draft" | "approved" | "ordered"
+  items      ShoppingListItem[]
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+}
+
+model ShoppingListItem {
+  id       String       @id @default(cuid())
+  listId   String
+  list     ShoppingList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  name     String
+  quantity Float        @default(1)
+  unit     String       @default("each")
+  category String       @default("Other")
+  source   String       @default("adhoc") // "staple" | "recipe" | "adhoc"
+  checked  Boolean      @default(false)
+}
